@@ -1,5 +1,5 @@
 ---
-name: elastic-compute-setup
+name: ec-data-sources
 description: Self-service data source setup and data discovery on Teradata Elastic Compute. Guides users through role detection, auth objects, datalakes, foreign tables, views, and access grants based on their EC role (TD_ACCESS, TD_CREATOR, TD_ADMIN).
 ---
 
