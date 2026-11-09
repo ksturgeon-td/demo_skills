@@ -1,20 +1,36 @@
 ---
 name: elastic-compute-setup
-description: Self-service data source setup on Teradata Elastic Compute. Guides users through role detection, auth objects, datalakes, foreign tables, views, and access grants based on their EC role (TD_ACCESS, TD_CREATOR, TD_ADMIN).
+description: Self-service data source setup and data discovery on Teradata Elastic Compute. Guides users through role detection, auth objects, datalakes, foreign tables, views, and access grants based on their EC role (TD_ACCESS, TD_CREATOR, TD_ADMIN).
 ---
 
 # Elastic Compute Setup Skill
 
 ## Purpose
 
-Guide users through self-service data source configuration on Teradata Elastic Compute (EC).
-This skill handles prerequisite object creation — authorization objects, datalakes, foreign
+Guide users through self-service data source configuration or discovery on Teradata Elastic Compute (EC).
+This skill checks and handles prerequisite object creation — authorization objects, datalakes, foreign
 tables, views, and access grants — so users can then query and analyze data using the
 Teradata SQL analytics corpus.
 
 This skill does NOT generate analytics SQL. Once data sources are configured, delegate to
 `get_syntax_help(topic="open-table-format")`, `get_syntax_help(topic="object-store")`, or
 the broader corpus for query and analytics patterns.
+
+---
+
+## Response Style
+
+Default to plain English. Most users are not Teradata experts — lead with what you found and what it means, not DDL.
+
+**Opening each interaction:**
+Briefly explain in one sentence what you are about to do before running any SQL. After getting results, summarize what they mean in plain language before showing raw output.
+
+**Technical depth:**
+Ask once, early: *"Would you like to see the SQL as we go, or should I just run it and show you the results?"*
+- **Show SQL** when: the user asks for it, something fails and you need to debug, or the user is a curator/admin doing hands-on setup work.
+- **Omit SQL** otherwise — summarize the action and its result in plain terms.
+
+**When in doubt:** assume the user wants to accomplish a goal, not learn SQL syntax.
 
 ---
 
@@ -44,7 +60,8 @@ SELECT 'nested', r.RoleName
 FROM DBC.RoleMembersV u
 JOIN DBC.RoleMembersV r ON u.RoleName = r.Grantee
 WHERE u.Grantee = '<username>';
--- e.g. '<username>' = 'kevin.sturgeon@teradata.com'
+-- e.g., 'jsmith', 'jane.doe@company.com', or a service account name — format varies by deployment
+-- If the user doesn't know their username: SELECT USER;
 ```
 
 > **Ignore `TD_SSO_*` / `SSO_EC*` roles** — these are SCIM synchronization artifacts
@@ -53,9 +70,9 @@ WHERE u.Grantee = '<username>';
 
 | Role found | Persona | Proceed to |
 |------------|---------|-----------|
-| `TD_ACCESS` or `*_DATA_USER` | Data User — can discover and query existing sources | Step 2A — Discovery |
-| `*_DATA_CURATOR` | Data Curator — can create auth objects and tables in global databases | Step 2B — Setup |
-| `TD_CREATOR` or `TD_ADMIN` | Admin — can create local databases, datalakes, call `TD_GLOBAL` procs, but **no rights inside global databases by default** | Step 2B — with rights check |
+| `TD_ACCESS` or `*_DATA_USER` | Data User — can discover and query existing sources | Step 2 — Discovery |
+| `*_DATA_CURATOR` | Data Curator — can create auth objects and tables in global databases | Step 2 — Discovery, then Step 3 if setup is needed |
+| `TD_CREATOR` or `TD_ADMIN` | Admin — can create local databases, datalakes, call `TD_GLOBAL` procs, but **no rights inside global databases by default** | Step 2 — Discovery, then Step 3 with rights check if setup is needed |
 | None of the above | Unknown | Ask user to contact their EC admin to confirm role assignment |
 
 > **Rights check for TD_CREATOR / TD_ADMIN:** Before proceeding to object creation, verify
@@ -72,10 +89,11 @@ WHERE u.Grantee = '<username>';
 
 ---
 
-## Step 2A — Data User (TD_ACCESS): Discovery
+## Step 2 — Discover Existing Data Sources (All Roles)
 
-Data Users can discover and query existing objects but cannot create databases, datalakes,
-or foreign tables.
+Run these discovery queries for all users — before setup, before troubleshooting, and whenever
+the user asks what data is available. Even curators and admins benefit from knowing what already
+exists before creating anything new.
 
 ### Discover available data sources
 
@@ -130,22 +148,19 @@ Once sources are located, query OTF data using three-part notation (`datalake.db
 load `get_syntax_help(topic="open-table-format")` for query syntax.
 
 **If no datalakes or global databases exist:**
-> "No data sources have been configured yet on this Elastic Compute instance. Contact your
-> Data Curator or EC Admin to set up access."
+
+- **TD_ACCESS / Data User:** "No data sources have been configured yet on this Elastic Compute
+  instance. Contact your Data Curator or EC Admin to set up access."
+- **TD_CURATOR / TD_CREATOR / TD_ADMIN:** "No data sources exist yet — continue to Step 3 to
+  set one up."
 
 ---
 
-## Step 2B — Data Curator / Admin (TD_CREATOR): Setup
+## Step 3 — Setup (Data Curator / Admin)
 
 ### Pre-flight: Global Database Check
 
-Before any object creation, verify at least one global database exists:
-
-```sql
-SELECT Child AS DatabaseName FROM DBC.ChildrenV WHERE Parent = 'TD_GLOBAL';
-```
-
-**If no global databases exist**, stop and respond:
+Use the global database list from Step 2. If none were found, stop and respond:
 > "A global database is required before creating shared authorization objects or datalakes.
 > Global databases are created by Org Admins or Site Admins via Vantage Console →
 > Object Metadata. Please contact your admin to create one first.
